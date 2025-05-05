@@ -538,27 +538,27 @@ def register_command_handlers():
     Register all command handlers with the MCP server.
     """
     # Basic commands
-    mcp_server.register_command_handler("ping", handle_ping)
-    mcp_server.register_command_handler("get_memory_stats", handle_get_memory_stats)
-    mcp_server.register_command_handler("health_check", handle_health_check)
+    mcp_server.register_command("ping", handle_ping)
+    mcp_server.register_command("get_memory_stats", handle_get_memory_stats)
+    mcp_server.register_command("health_check", handle_health_check)
     
     # Memory operations
-    mcp_server.register_command_handler("store_memory", handle_store_memory)
-    mcp_server.register_command_handler("retrieve_memory", handle_retrieve_memory)
-    mcp_server.register_command_handler("delete_memory", handle_delete_memory)
+    mcp_server.register_command("store_memory", handle_store_memory)
+    mcp_server.register_command("retrieve_memory", handle_retrieve_memory)
+    mcp_server.register_command("delete_memory", handle_delete_memory)
     
     # Memory search commands
-    mcp_server.register_command_handler("search_by_tag", handle_search_by_tag)
-    mcp_server.register_command_handler("search_by_scope", handle_search_by_scope)
+    mcp_server.register_command("search_by_tag", handle_search_by_tag)
+    mcp_server.register_command("search_by_scope", handle_search_by_scope)
     
     # Conversation history commands
-    mcp_server.register_command_handler("store_conversation_history", handle_store_conversation_history)
-    mcp_server.register_command_handler("get_conversation_history", handle_get_conversation_history)
-    mcp_server.register_command_handler("get_conversations_list", handle_get_conversations_list)
+    mcp_server.register_command("store_conversation_history", handle_store_conversation_history)
+    mcp_server.register_command("get_conversation_history", handle_get_conversation_history)
+    mcp_server.register_command("get_conversations_list", handle_get_conversations_list)
     
     # Conversation summary commands
-    mcp_server.register_command_handler("create_conversation_summary", handle_create_conversation_summary)
-    mcp_server.register_command_handler("get_conversation_summaries", handle_get_conversation_summaries)
+    mcp_server.register_command("create_conversation_summary", handle_create_conversation_summary)
+    mcp_server.register_command("get_conversation_summaries", handle_get_conversation_summaries)
     
     # Maintenance commands
-    mcp_server.register_command_handler("optimize_memory", handle_optimize_memory) 
+    mcp_server.register_command("optimize_memory", handle_optimize_memory) 

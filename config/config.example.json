@@ -1,6 +1,6 @@
 {
     "database": {
-        "mode": "embedded",
+        "mode": "external",
         "uri": "mongodb://localhost:27017/claude_memory",
         "path": "~/ClaudeMemory/mongo_data",
         "max_memory_items": 100000,

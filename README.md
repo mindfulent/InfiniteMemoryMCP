@@ -32,16 +32,73 @@ InfiniteMemoryMCP is a MongoDB-powered persistent memory system for Claude Deskt
    pip install -r requirements.txt
    ```
 
-3. Configure the system
+3. Install MongoDB (if not already installed)
+   - macOS (using Homebrew):
+     ```
+     brew tap mongodb/brew
+     brew install mongodb-community
+     ```
+   - Windows/Linux: Follow the [official MongoDB installation guide](https://docs.mongodb.com/manual/installation/)
+
+4. Start MongoDB service
+   - macOS:
+     ```
+     brew services start mongodb-community
+     ```
+   - Windows (run as Administrator):
+     ```
+     net start MongoDB
+     ```
+   - Linux:
+     ```
+     sudo systemctl start mongod
+     ```
+
+5. Configure the system
    ```
    cp config/config.example.json config/config.json
    # Edit config.json with your preferred settings
    ```
+   
+   The default configuration uses external MongoDB mode (recommended):
+   ```json
+   {
+       "database": {
+           "mode": "external",
+           "uri": "mongodb://localhost:27017/claude_memory",
+           "path": "~/ClaudeMemory/mongo_data",
+           ...
+       },
+       ...
+   }
+   ```
 
-4. Run the service
+6. Run the service
    ```
    python -m src.infinite_memory_mcp.main
    ```
+   
+   Or use the provided script:
+   ```
+   chmod +x run.sh  # Make it executable (first time only)
+   ./run.sh
+   ```
+
+### Configuration Options
+
+#### MongoDB Connection Modes
+
+InfiniteMemoryMCP supports two MongoDB connection modes:
+
+1. **External Mode (Recommended)**: Connect to a separately running MongoDB instance
+   - Set `database.mode` to `"external"` in config.json
+   - Ensure MongoDB is installed and running before starting InfiniteMemoryMCP
+   - This is more stable and allows better control over your MongoDB instance
+
+2. **Embedded Mode**: The application attempts to start and manage MongoDB itself
+   - Set `database.mode` to `"embedded"` in config.json
+   - Requires `mongod` executable to be in your system PATH
+   - Useful for quick testing but less reliable for production use
 
 ## Usage
 InfiniteMemoryMCP integrates with Claude Desktop using the Model Context Protocol (MCP). When running, it will listen for MCP commands on stdin and respond on stdout.
@@ -137,6 +194,20 @@ InfiniteMemoryMCP includes a comprehensive test suite:
    ```
    python -m pytest -v
    ```
+
+## Troubleshooting
+
+### Common Issues
+
+1. **MongoDB Connection Error**:
+   - Check if MongoDB is running: `brew services list` (macOS) or `systemctl status mongod` (Linux)
+   - Ensure your config.json has the correct mode ("external" is recommended)
+   - Verify MongoDB is installed and available in your PATH
+
+2. **MCP Server Error**:
+   - Check for error messages in the output
+   - Verify path to your repository in the Claude Desktop configuration
+   - Check your Python environment has all required dependencies
 
 ## Project Status
 See the [Implementation Status](implementation_status.md) for current progress and future work.

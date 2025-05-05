@@ -73,7 +73,7 @@ class MongoManager:
         Returns:
             True if server started successfully
         """
-        if self.client:
+        if self.client is not None:
             logger.info("MongoDB already connected")
             return True
         
@@ -136,7 +136,7 @@ class MongoManager:
     
     def _cleanup_embedded(self) -> None:
         """Clean up embedded MongoDB resources."""
-        if self.embedded_process:
+        if self.embedded_process is not None:
             try:
                 # First try to terminate gracefully
                 self.embedded_process.terminate()
@@ -151,7 +151,7 @@ class MongoManager:
             
             self.embedded_process = None
         
-        if self.client:
+        if self.client is not None:
             try:
                 self.client.close()
             except:
@@ -166,7 +166,7 @@ class MongoManager:
         Returns:
             True if connection was successful
         """
-        if self.client:
+        if self.client is not None:
             logger.info("MongoDB already connected")
             return True
         
@@ -197,7 +197,7 @@ class MongoManager:
         
         except Exception as e:
             logger.error(f"Failed to connect to MongoDB: {e}")
-            if self.client:
+            if self.client is not None:
                 try:
                     self.client.close()
                 except:
@@ -210,7 +210,7 @@ class MongoManager:
         if self.use_embedded:
             self._cleanup_embedded()
         else:
-            if self.client:
+            if self.client is not None:
                 try:
                     self.client.close()
                 except:
@@ -233,7 +233,7 @@ class MongoManager:
         Raises:
             RuntimeError: If the MongoDB connection is not established
         """
-        if not self.db:
+        if self.db is None:
             raise RuntimeError("MongoDB connection not established")
         
         return self.db.get_collection(collection_name)
@@ -248,7 +248,7 @@ class MongoManager:
         Raises:
             RuntimeError: If the MongoDB connection is not established
         """
-        if not self.client:
+        if self.client is None:
             raise RuntimeError("MongoDB connection not established")
         
         return self.client
@@ -263,7 +263,7 @@ class MongoManager:
         Raises:
             RuntimeError: If the MongoDB connection is not established
         """
-        if not self.db:
+        if self.db is None:
             raise RuntimeError("MongoDB connection not established")
         
         return self.db
@@ -274,7 +274,7 @@ class MongoManager:
         
         This improves query performance for common operations.
         """
-        if not self.db or self.indexes_created:
+        if self.db is None or self.indexes_created:
             return
         
         try:
@@ -324,7 +324,7 @@ class MongoManager:
             "operations_performed": []
         }
         
-        if not self.db:
+        if self.db is None:
             results["status"] = "error"
             results["error"] = "MongoDB connection not established"
             return results

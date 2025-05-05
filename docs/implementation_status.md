@@ -35,7 +35,6 @@
 
 ## Session 5: Advanced Features & Optimizations (Pending)
 
-- [ ] Memory pruning and cleanup
 - [ ] Backup and restore functionality
 - [ ] Performance optimizations
 - [ ] User preferences and settings

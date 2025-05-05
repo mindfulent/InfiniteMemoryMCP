@@ -816,6 +816,233 @@ class MemoryRepository:
         stats["total_embeddings"] = memory_index.count_documents({})
         
         return stats
+    
+    def get_conversation_history(
+        self,
+        conversation_id: str,
+        limit: Optional[int] = None,
+        offset: Optional[int] = 0
+    ) -> List[ConversationMemory]:
+        """
+        Get the conversation history for a specific conversation.
+        
+        Args:
+            conversation_id: The ID of the conversation
+            limit: Maximum number of messages to return (default: all)
+            offset: Number of messages to skip from the beginning
+            
+        Returns:
+            List of conversation memories in chronological order
+        """
+        collection = mongo_manager.get_collection("conversation_history")
+        
+        # Build the query
+        query = {"conversation_id": conversation_id}
+        
+        # Set up sort and pagination
+        cursor = collection.find(query).sort("timestamp", 1)
+        
+        # Apply offset and limit if provided
+        if offset:
+            cursor = cursor.skip(offset)
+        if limit:
+            cursor = cursor.limit(limit)
+        
+        # Convert to ConversationMemory objects
+        memories = [dict_to_dataclass(doc, ConversationMemory) for doc in cursor]
+        
+        return memories
+    
+    def store_conversation_batch(
+        self, 
+        messages: List[Dict[str, Any]],
+        conversation_id: Optional[str] = None,
+        scope: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Store a batch of conversation messages.
+        
+        Args:
+            messages: List of message dictionaries with 'speaker' and 'text'
+            conversation_id: The ID of the conversation (generated if not provided)
+            scope: The scope to store the memories in
+            
+        Returns:
+            Dictionary with conversation_id and list of memory_ids
+        """
+        # Generate conversation_id if not provided
+        if not conversation_id:
+            conversation_id = str(uuid.uuid4())
+        
+        # Default scope to "Global" if not provided
+        if not scope:
+            scope = "Global"
+        
+        memory_ids = []
+        
+        # Store each message in the batch
+        for message in messages:
+            memory = ConversationMemory(
+                conversation_id=conversation_id,
+                speaker=message.get("speaker", "user"),
+                text=message.get("text", ""),
+                scope=scope,
+                tags=message.get("tags", []),
+                timestamp=message.get("timestamp", datetime.now())
+            )
+            
+            memory_id = self.store_conversation_memory(memory)
+            memory_ids.append(memory_id)
+        
+        return {
+            "conversation_id": conversation_id,
+            "memory_ids": memory_ids
+        }
+    
+    def store_summary(self, summary: SummaryMemory) -> str:
+        """
+        Store a conversation summary.
+        
+        Args:
+            summary: The summary memory to store
+            
+        Returns:
+            The ID of the stored summary
+        """
+        collection = mongo_manager.get_collection("summaries")
+        
+        # Convert to dict for MongoDB
+        summary_dict = dataclass_to_dict(summary)
+        
+        # Insert the summary
+        result = collection.insert_one(summary_dict)
+        summary_id = str(result.inserted_id)
+        
+        # Create an embedding for this summary (asynchronously if enabled)
+        text = summary.summary_text
+        scope = summary.scope
+        self._create_memory_embedding_async(
+            text=text,
+            source_collection="summaries",
+            source_id=summary_id,
+            scope=scope
+        )
+        
+        # Return the inserted ID
+        return summary_id
+    
+    def get_summaries_by_conversation(self, conversation_id: str) -> List[SummaryMemory]:
+        """
+        Get summaries for a specific conversation.
+        
+        Args:
+            conversation_id: The ID of the conversation
+            
+        Returns:
+            List of summary memories
+        """
+        collection = mongo_manager.get_collection("summaries")
+        
+        # Build the query
+        query = {"conversation_id": conversation_id}
+        
+        # Execute the query
+        cursor = collection.find(query).sort("timestamp", -1)
+        
+        # Convert to SummaryMemory objects
+        summaries = [dict_to_dataclass(doc, SummaryMemory) for doc in cursor]
+        
+        return summaries
+    
+    def get_latest_conversation_summaries(
+        self,
+        limit: int = 10,
+        scope: Optional[str] = None
+    ) -> List[SummaryMemory]:
+        """
+        Get the latest conversation summaries.
+        
+        Args:
+            limit: Maximum number of summaries to return
+            scope: Optional scope to filter by
+            
+        Returns:
+            List of summary memories
+        """
+        collection = mongo_manager.get_collection("summaries")
+        
+        # Build the query
+        query = {}
+        if scope:
+            query["scope"] = scope
+        
+        # Execute the query
+        cursor = collection.find(query).sort("timestamp", -1).limit(limit)
+        
+        # Convert to SummaryMemory objects
+        summaries = [dict_to_dataclass(doc, SummaryMemory) for doc in cursor]
+        
+        return summaries
+    
+    def get_conversations_list(
+        self,
+        limit: int = 10,
+        scope: Optional[str] = None,
+        include_messages: bool = False
+    ) -> List[Dict[str, Any]]:
+        """
+        Get a list of recent conversations.
+        
+        Args:
+            limit: Maximum number of conversations to return
+            scope: Optional scope to filter by
+            include_messages: Whether to include the first few messages
+            
+        Returns:
+            List of conversation info dictionaries
+        """
+        collection = mongo_manager.get_collection("conversation_history")
+        
+        # Build the pipeline for aggregation
+        pipeline = []
+        
+        # Match by scope if provided
+        if scope:
+            pipeline.append({"$match": {"scope": scope}})
+        
+        # Group by conversation_id and get first and last messages
+        pipeline.append({
+            "$group": {
+                "_id": "$conversation_id",
+                "conversation_id": {"$first": "$conversation_id"},
+                "first_timestamp": {"$min": "$timestamp"},
+                "last_timestamp": {"$max": "$timestamp"},
+                "message_count": {"$sum": 1},
+                "scope": {"$first": "$scope"},
+                "first_message": {"$first": {"text": "$text", "speaker": "$speaker"}},
+            }
+        })
+        
+        # Sort by most recent activity
+        pipeline.append({"$sort": {"last_timestamp": -1}})
+        
+        # Limit results
+        pipeline.append({"$limit": limit})
+        
+        # Execute the aggregation
+        conversations = list(collection.aggregate(pipeline))
+        
+        # If include_messages is True, fetch the first few messages for each conversation
+        if include_messages:
+            for conv in conversations:
+                conv_id = conv["conversation_id"]
+                messages = self.get_conversation_history(conv_id, limit=3)
+                conv["preview_messages"] = [
+                    {"text": msg.text, "speaker": msg.speaker, "timestamp": msg.timestamp} 
+                    for msg in messages
+                ]
+        
+        return conversations
 
 
 # Create a singleton instance

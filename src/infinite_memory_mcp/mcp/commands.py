@@ -262,135 +262,303 @@ def handle_health_check(request: Dict[str, Any]) -> Dict[str, Any]:
     """
     Handle a health_check request.
     
-    Returns health information about the MCP server and connected services.
+    Checks the health of the memory service and its dependencies.
     
     Args:
         request: The MCP request
         
     Returns:
-        A dict containing health information
+        A dict containing the response with health status
     """
     logger.debug("Handling health_check request")
     
-    # Get MCP server health
-    mcp_health = mcp_server.get_health()
-    
-    # Get MongoDB status
-    mongo_status = "ok"
+    # Check MongoDB connection
+    mongo_status = "OK"
     try:
-        # Check if MongoDB is responding
-        mongo_manager.get_client().admin.command('ping')
+        # Ping MongoDB
+        mongo_manager.client.admin.command("ping")
     except Exception as e:
-        mongo_status = "error"
-        logger.error(f"MongoDB health check failed: {e}")
+        mongo_status = f"ERROR: {str(e)}"
     
-    # Get embedding service status
-    embedding_status = "ok"
-    if not embedding_service.initialized:
-        embedding_status = "not_initialized"
+    # Check embedding service
+    embedding_status = "OK"
+    try:
+        # Try generating a simple embedding
+        embedding_service.generate_embedding("test")
+    except Exception as e:
+        embedding_status = f"ERROR: {str(e)}"
     
-    # Compose health response
+    # Check memory service
+    memory_status = "OK"
+    try:
+        # Get memory stats as a basic test
+        memory_service.get_memory_stats()
+    except Exception as e:
+        memory_status = f"ERROR: {str(e)}"
+    
+    # Determine overall health
+    overall_status = "OK"
+    if "ERROR" in mongo_status or "ERROR" in embedding_status or "ERROR" in memory_status:
+        overall_status = "ERROR"
+    
     response = {
-        "status": "OK",
-        "health": {
-            "mcp_server": mcp_health,
+        "status": overall_status,
+        "components": {
             "mongodb": mongo_status,
-            "embedding_service": embedding_status
-        }
+            "embedding": embedding_status,
+            "memory_service": memory_status
+        },
+        "timestamp": time.time()
     }
     
     return response
+
+
+def handle_store_conversation_history(request: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Handle a store_conversation_history request.
+    
+    Stores a batch of conversation messages.
+    
+    Args:
+        request: The MCP request containing the conversation to store
+        
+    Returns:
+        A dict containing the response with conversation ID
+    """
+    logger.debug("Handling store_conversation_history request")
+    
+    # Extract required messages
+    messages = request.get("messages", [])
+    if not messages:
+        return {
+            "status": "ERROR",
+            "error": "Missing or empty 'messages' field"
+        }
+    
+    # Extract optional fields
+    conversation_id = request.get("conversation_id")
+    metadata = request.get("metadata", {})
+    scope = metadata.get("scope")
+    
+    # Store the conversation
+    result = memory_service.store_conversation_history(
+        messages=messages,
+        conversation_id=conversation_id,
+        scope=scope
+    )
+    
+    return result
+
+
+def handle_get_conversation_history(request: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Handle a get_conversation_history request.
+    
+    Retrieves the conversation history for a specific conversation.
+    
+    Args:
+        request: The MCP request containing the conversation ID
+        
+    Returns:
+        A dict containing the response with conversation history
+    """
+    logger.debug("Handling get_conversation_history request")
+    
+    # Extract required conversation_id
+    conversation_id = request.get("conversation_id")
+    if not conversation_id:
+        return {
+            "status": "ERROR",
+            "error": "Missing required 'conversation_id' field"
+        }
+    
+    # Extract optional parameters
+    limit = request.get("limit")
+    offset = request.get("offset", 0)
+    
+    # Get the conversation history
+    result = memory_service.get_conversation_history(
+        conversation_id=conversation_id,
+        limit=limit,
+        offset=offset
+    )
+    
+    return result
+
+
+def handle_get_conversations_list(request: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Handle a get_conversations_list request.
+    
+    Retrieves a list of recent conversations.
+    
+    Args:
+        request: The MCP request
+        
+    Returns:
+        A dict containing the response with conversations list
+    """
+    logger.debug("Handling get_conversations_list request")
+    
+    # Extract optional parameters
+    limit = request.get("limit", 10)
+    scope = request.get("scope")
+    include_messages = request.get("include_messages", False)
+    
+    # Get the conversations list
+    result = memory_service.get_conversations_list(
+        limit=limit,
+        scope=scope,
+        include_messages=include_messages
+    )
+    
+    return result
+
+
+def handle_create_conversation_summary(request: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Handle a create_conversation_summary request.
+    
+    Creates a summary for a conversation.
+    
+    Args:
+        request: The MCP request containing the conversation ID
+        
+    Returns:
+        A dict containing the response with summary information
+    """
+    logger.debug("Handling create_conversation_summary request")
+    
+    # Extract required conversation_id
+    conversation_id = request.get("conversation_id")
+    if not conversation_id:
+        return {
+            "status": "ERROR",
+            "error": "Missing required 'conversation_id' field"
+        }
+    
+    # Extract optional parameters
+    summary_text = request.get("summary_text")
+    generate_summary = request.get("generate_summary", True)
+    
+    # Create the summary
+    result = memory_service.create_conversation_summary(
+        conversation_id=conversation_id,
+        summary_text=summary_text,
+        generate_summary=generate_summary
+    )
+    
+    return result
+
+
+def handle_get_conversation_summaries(request: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Handle a get_conversation_summaries request.
+    
+    Retrieves summaries for conversations.
+    
+    Args:
+        request: The MCP request
+        
+    Returns:
+        A dict containing the response with summaries
+    """
+    logger.debug("Handling get_conversation_summaries request")
+    
+    # Extract optional parameters
+    conversation_id = request.get("conversation_id")
+    limit = request.get("limit", 10)
+    scope = request.get("scope")
+    
+    # Get the summaries
+    result = memory_service.get_conversation_summaries(
+        conversation_id=conversation_id,
+        limit=limit,
+        scope=scope
+    )
+    
+    return result
 
 
 def handle_optimize_memory(request: Dict[str, Any]) -> Dict[str, Any]:
     """
     Handle an optimize_memory request.
     
-    Performs optimization operations on the memory system, including:
-    - Database optimization (indexes, compaction, etc.)
-    - Embedding service cleanup
-    - Other maintenance tasks
+    Performs optimization operations on the memory database.
     
     Args:
         request: The MCP request
         
     Returns:
-        A dict containing the results of the optimization
+        A dict containing the response with optimization results
     """
     logger.debug("Handling optimize_memory request")
     
-    results = {
+    # Extract operations to perform (if any)
+    operations = request.get("operations", [])
+    
+    # Default operations if none specified
+    if not operations:
+        operations = ["compact_db", "reindex", "summarize_old"]
+    
+    results = {}
+    
+    # Perform requested operations
+    try:
+        for op in operations:
+            if op == "compact_db":
+                # Compact the database (reduce disk usage)
+                mongo_manager.client.admin.command("compact", "conversation_history")
+                results["compact_db"] = "OK"
+            elif op == "reindex":
+                # Rebuild indexes
+                mongo_manager.get_collection("conversation_history").reindex()
+                mongo_manager.get_collection("memory_index").reindex()
+                results["reindex"] = "OK"
+            elif op == "summarize_old":
+                # Summarize old conversations (not implemented yet)
+                # This would find conversations older than X that don't have summaries
+                # and create summaries for them
+                results["summarize_old"] = "Not implemented yet"
+            else:
+                results[op] = "Unknown operation"
+    except Exception as e:
+        logger.error(f"Error during optimization: {e}")
+        results["error"] = str(e)
+    
+    return {
         "status": "OK",
-        "operations_performed": []
+        "operations": results
     }
-    
-    # Optimize MongoDB
-    try:
-        db_results = mongo_manager.optimize_database()
-        results["database_optimization"] = db_results
-        results["operations_performed"].extend(db_results.get("operations_performed", []))
-    except Exception as e:
-        logger.error(f"Error during database optimization: {e}")
-        results["database_optimization"] = {
-            "status": "error",
-            "error": str(e)
-        }
-    
-    # Optimize embedding service
-    try:
-        # Clear any old or unused embeddings from cache
-        if hasattr(embedding_service, 'embedding_cache'):
-            cache_size_before = len(embedding_service.embedding_cache)
-            # Keep only the 100 most recent items in cache
-            if cache_size_before > 100:
-                # Get the keys (text) from the cache
-                keys = list(embedding_service.embedding_cache.keys())
-                # Remove older items (first in the ordered dict)
-                for old_key in keys[:-100]:
-                    embedding_service.embedding_cache.pop(old_key, None)
-                
-                results["operations_performed"].append("cleaned_embedding_cache")
-                results["embedding_optimization"] = {
-                    "status": "ok",
-                    "cache_size_before": cache_size_before,
-                    "cache_size_after": len(embedding_service.embedding_cache)
-                }
-        
-        # Ensure the worker thread is running
-        if embedding_service.async_enabled and not embedding_service.running:
-            embedding_service.start_worker()
-            results["operations_performed"].append("restarted_embedding_worker")
-    except Exception as e:
-        logger.error(f"Error during embedding service optimization: {e}")
-        results["embedding_optimization"] = {
-            "status": "error",
-            "error": str(e)
-        }
-    
-    # Get memory stats for the response
-    try:
-        stats = memory_service.get_memory_stats()
-        results["memory_stats"] = stats
-    except Exception as e:
-        logger.error(f"Error getting memory stats: {e}")
-    
-    return results
 
 
 def register_command_handlers():
-    """Register all MCP command handlers."""
-    # Core commands
-    mcp_server.register_command("ping", handle_ping)
-    mcp_server.register_command("get_memory_stats", handle_get_memory_stats)
-    mcp_server.register_command("health_check", handle_health_check)
-    mcp_server.register_command("optimize_memory", handle_optimize_memory)
+    """
+    Register all command handlers with the MCP server.
+    """
+    # Basic commands
+    mcp_server.register_command_handler("ping", handle_ping)
+    mcp_server.register_command_handler("get_memory_stats", handle_get_memory_stats)
+    mcp_server.register_command_handler("health_check", handle_health_check)
     
-    # Memory commands
-    mcp_server.register_command("store_memory", handle_store_memory)
-    mcp_server.register_command("retrieve_memory", handle_retrieve_memory)
-    mcp_server.register_command("search_by_tag", handle_search_by_tag)
-    mcp_server.register_command("search_by_scope", handle_search_by_scope)
-    mcp_server.register_command("delete_memory", handle_delete_memory)
+    # Memory operations
+    mcp_server.register_command_handler("store_memory", handle_store_memory)
+    mcp_server.register_command_handler("retrieve_memory", handle_retrieve_memory)
+    mcp_server.register_command_handler("delete_memory", handle_delete_memory)
     
-    # Other commands
-    # Additional commands will be registered here 
+    # Memory search commands
+    mcp_server.register_command_handler("search_by_tag", handle_search_by_tag)
+    mcp_server.register_command_handler("search_by_scope", handle_search_by_scope)
+    
+    # Conversation history commands
+    mcp_server.register_command_handler("store_conversation_history", handle_store_conversation_history)
+    mcp_server.register_command_handler("get_conversation_history", handle_get_conversation_history)
+    mcp_server.register_command_handler("get_conversations_list", handle_get_conversations_list)
+    
+    # Conversation summary commands
+    mcp_server.register_command_handler("create_conversation_summary", handle_create_conversation_summary)
+    mcp_server.register_command_handler("get_conversation_summaries", handle_get_conversation_summaries)
+    
+    # Maintenance commands
+    mcp_server.register_command_handler("optimize_memory", handle_optimize_memory) 

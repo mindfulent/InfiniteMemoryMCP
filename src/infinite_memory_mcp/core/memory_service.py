@@ -415,6 +415,305 @@ class MemoryService:
             Dictionary with memory statistics
         """
         return memory_repository.get_memory_stats()
+    
+    def store_conversation_history(
+        self,
+        messages: List[Dict[str, Any]],
+        conversation_id: Optional[str] = None,
+        scope: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Store a batch of conversation messages.
+        
+        Args:
+            messages: List of message dictionaries with 'speaker' and 'text'
+            conversation_id: The ID of the conversation (generated if not provided)
+            scope: The scope to store the memories in
+            
+        Returns:
+            Dictionary with conversation_id and status
+        """
+        # Use default scope if none provided
+        if not scope:
+            scope = self.default_scope
+            
+        # Check if scope exists, create if it doesn't and auto-create is enabled
+        if self.auto_create_scope:
+            scope_obj = memory_repository.get_scope(scope)
+            if not scope_obj:
+                logger.info(f"Creating new scope: {scope}")
+                new_scope = MemoryScope(
+                    scope_name=scope,
+                    description=f"Auto-created scope: {scope}",
+                    created_at=datetime.now(),
+                    active=True
+                )
+                memory_repository.create_scope(new_scope)
+        
+        # Store the conversation batch
+        result = memory_repository.store_conversation_batch(
+            messages=messages,
+            conversation_id=conversation_id,
+            scope=scope
+        )
+        
+        logger.info(f"Stored conversation batch with ID: {result['conversation_id']}")
+        
+        return {
+            "status": "OK",
+            "conversation_id": result['conversation_id'],
+            "memory_ids": result['memory_ids']
+        }
+    
+    def get_conversation_history(
+        self,
+        conversation_id: str,
+        limit: Optional[int] = None,
+        offset: Optional[int] = 0
+    ) -> Dict[str, Any]:
+        """
+        Get the conversation history for a specific conversation.
+        
+        Args:
+            conversation_id: The ID of the conversation
+            limit: Maximum number of messages to return (default: all)
+            offset: Number of messages to skip from the beginning
+            
+        Returns:
+            Dictionary with status and conversation history
+        """
+        memories = memory_repository.get_conversation_history(
+            conversation_id=conversation_id,
+            limit=limit,
+            offset=offset
+        )
+        
+        results = []
+        for memory in memories:
+            results.append({
+                "text": memory.text,
+                "speaker": memory.speaker,
+                "timestamp": memory.timestamp.isoformat(),
+                "memory_id": memory.id,
+                "scope": memory.scope,
+                "tags": memory.tags
+            })
+        
+        return {
+            "status": "OK",
+            "conversation_id": conversation_id,
+            "messages": results,
+            "count": len(results)
+        }
+    
+    def get_conversations_list(
+        self,
+        limit: int = 10,
+        scope: Optional[str] = None,
+        include_messages: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Get a list of recent conversations.
+        
+        Args:
+            limit: Maximum number of conversations to return
+            scope: Optional scope to filter by
+            include_messages: Whether to include the first few messages
+            
+        Returns:
+            Dictionary with status and conversations list
+        """
+        # Use default scope if none provided
+        if not scope:
+            scope = self.default_scope
+        
+        conversations = memory_repository.get_conversations_list(
+            limit=limit,
+            scope=scope,
+            include_messages=include_messages
+        )
+        
+        # Format datetime objects for JSON response
+        for conv in conversations:
+            conv["first_timestamp"] = conv["first_timestamp"].isoformat()
+            conv["last_timestamp"] = conv["last_timestamp"].isoformat()
+            if include_messages and "preview_messages" in conv:
+                for msg in conv["preview_messages"]:
+                    msg["timestamp"] = msg["timestamp"].isoformat()
+        
+        return {
+            "status": "OK",
+            "conversations": conversations,
+            "count": len(conversations)
+        }
+    
+    def create_conversation_summary(
+        self,
+        conversation_id: str,
+        summary_text: Optional[str] = None,
+        generate_summary: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Create a summary for a conversation.
+        
+        Args:
+            conversation_id: The ID of the conversation to summarize
+            summary_text: Optional pre-generated summary text
+            generate_summary: Whether to auto-generate summary if not provided
+            
+        Returns:
+            Dictionary with status and summary information
+        """
+        # Get the conversation messages
+        memories = memory_repository.get_conversation_history(conversation_id)
+        
+        if not memories:
+            return {
+                "status": "ERROR",
+                "message": f"No conversation found with ID {conversation_id}"
+            }
+        
+        # Get the conversation scope
+        scope = memories[0].scope
+        
+        # If no summary text is provided and generate_summary is True, 
+        # generate a summary from the conversation
+        generated = False
+        if not summary_text and generate_summary:
+            summary_text = self._generate_conversation_summary(memories)
+            generated = True
+        
+        if not summary_text:
+            return {
+                "status": "ERROR",
+                "message": "No summary text provided or generated"
+            }
+        
+        # Create the summary object
+        summary = SummaryMemory(
+            conversation_id=conversation_id,
+            summary_text=summary_text,
+            scope=scope,
+            tags=["summary"],
+            time_range={
+                "from": memories[0].timestamp,
+                "to": memories[-1].timestamp
+            },
+            message_refs=[m.id for m in memories]  # Reference all messages
+        )
+        
+        # Store the summary
+        summary_id = memory_repository.store_summary(summary)
+        
+        return {
+            "status": "OK",
+            "summary_id": summary_id,
+            "conversation_id": conversation_id,
+            "summary_text": summary_text,
+            "generated": generated
+        }
+    
+    def get_conversation_summaries(
+        self,
+        conversation_id: Optional[str] = None,
+        limit: int = 10,
+        scope: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Get summaries for conversations.
+        
+        Args:
+            conversation_id: Optional specific conversation ID
+            limit: Maximum number of summaries to return
+            scope: Optional scope to filter by
+            
+        Returns:
+            Dictionary with status and summaries
+        """
+        if conversation_id:
+            # Get summaries for a specific conversation
+            summaries = memory_repository.get_summaries_by_conversation(conversation_id)
+        else:
+            # Get latest summaries
+            # Use default scope if none provided
+            if not scope:
+                scope = self.default_scope
+                
+            summaries = memory_repository.get_latest_conversation_summaries(
+                limit=limit,
+                scope=scope
+            )
+        
+        results = []
+        for summary in summaries:
+            time_range = None
+            if summary.time_range:
+                time_range = {
+                    "from": summary.time_range.get("from", "").isoformat() if isinstance(summary.time_range.get("from"), datetime) else summary.time_range.get("from"),
+                    "to": summary.time_range.get("to", "").isoformat() if isinstance(summary.time_range.get("to"), datetime) else summary.time_range.get("to")
+                }
+                
+            results.append({
+                "summary_id": summary.id,
+                "conversation_id": summary.conversation_id,
+                "summary_text": summary.summary_text,
+                "timestamp": summary.timestamp.isoformat(),
+                "scope": summary.scope,
+                "tags": summary.tags,
+                "time_range": time_range,
+                "message_count": len(summary.message_refs) if summary.message_refs else 0
+            })
+        
+        return {
+            "status": "OK",
+            "summaries": results,
+            "count": len(results)
+        }
+    
+    def _generate_conversation_summary(self, memories: List[ConversationMemory]) -> str:
+        """
+        Generate a summary for a conversation.
+        
+        This is a placeholder implementation. In a production system, this would
+        likely use an LLM or summarization algorithm.
+        
+        Args:
+            memories: List of conversation memories to summarize
+            
+        Returns:
+            Generated summary text
+        """
+        # This is a simple implementation that just extracts key points
+        # A real implementation would use more sophisticated summarization
+        
+        # Count messages per speaker
+        user_messages = [m for m in memories if m.speaker == "user"]
+        assistant_messages = [m for m in memories if m.speaker == "assistant"]
+        
+        # Get time range
+        start_time = memories[0].timestamp
+        end_time = memories[-1].timestamp
+        duration = end_time - start_time
+        
+        # Extract some content snippets (first user message, last assistant message)
+        first_user_text = user_messages[0].text if user_messages else ""
+        last_assistant_text = assistant_messages[-1].text if assistant_messages else ""
+        
+        # Build a simple summary
+        summary = [
+            f"Conversation with {len(user_messages)} user messages and {len(assistant_messages)} assistant responses.",
+            f"Duration: {duration.total_seconds() / 60:.1f} minutes.",
+            f"Started with: \"{first_user_text[:100]}{'...' if len(first_user_text) > 100 else ''}\"",
+        ]
+        
+        if last_assistant_text:
+            summary.append(f"Ended with: \"{last_assistant_text[:100]}{'...' if len(last_assistant_text) > 100 else ''}\"")
+        
+        return "\n".join(summary)
+        
+        # Note: In a real implementation, we would use an LLM to generate a proper summary
+        # For example:
+        # return llm_service.generate_summary(memories)
 
 
 # Create a singleton instance

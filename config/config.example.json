@@ -1,0 +1,29 @@
+{
+    "database": {
+        "mode": "embedded",
+        "uri": "mongodb://localhost:27017/claude_memory",
+        "path": "~/ClaudeMemory/mongo_data",
+        "max_memory_items": 100000,
+        "max_memory_size_mb": 500
+    },
+    "embedding": {
+        "model_name": "all-MiniLM-L6-v2",
+        "device": "cpu"
+    },
+    "backup": {
+        "enabled": true,
+        "frequency": "daily",
+        "retention": 7,
+        "encryption_enabled": false,
+        "encryption_passphrase": ""
+    },
+    "memory": {
+        "default_scope": "Global",
+        "auto_create_scope": true,
+        "retention_days": 180
+    },
+    "logging": {
+        "level": "INFO",
+        "file": "~/ClaudeMemory/logs/memory_service.log"
+    }
+} 

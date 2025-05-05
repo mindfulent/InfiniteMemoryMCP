@@ -9,6 +9,8 @@ import time
 from typing import Any, Dict, List, Optional
 
 from ..core.memory_service import memory_service
+from ..db.mongo_manager import mongo_manager
+from ..embedding.embedding_service import embedding_service
 from ..utils.logging import logger
 from .mcp_server import mcp_server
 
@@ -256,17 +258,139 @@ def handle_delete_memory(request: Dict[str, Any]) -> Dict[str, Any]:
     return result
 
 
+def handle_health_check(request: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Handle a health_check request.
+    
+    Returns health information about the MCP server and connected services.
+    
+    Args:
+        request: The MCP request
+        
+    Returns:
+        A dict containing health information
+    """
+    logger.debug("Handling health_check request")
+    
+    # Get MCP server health
+    mcp_health = mcp_server.get_health()
+    
+    # Get MongoDB status
+    mongo_status = "ok"
+    try:
+        # Check if MongoDB is responding
+        mongo_manager.get_client().admin.command('ping')
+    except Exception as e:
+        mongo_status = "error"
+        logger.error(f"MongoDB health check failed: {e}")
+    
+    # Get embedding service status
+    embedding_status = "ok"
+    if not embedding_service.initialized:
+        embedding_status = "not_initialized"
+    
+    # Compose health response
+    response = {
+        "status": "OK",
+        "health": {
+            "mcp_server": mcp_health,
+            "mongodb": mongo_status,
+            "embedding_service": embedding_status
+        }
+    }
+    
+    return response
+
+
+def handle_optimize_memory(request: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Handle an optimize_memory request.
+    
+    Performs optimization operations on the memory system, including:
+    - Database optimization (indexes, compaction, etc.)
+    - Embedding service cleanup
+    - Other maintenance tasks
+    
+    Args:
+        request: The MCP request
+        
+    Returns:
+        A dict containing the results of the optimization
+    """
+    logger.debug("Handling optimize_memory request")
+    
+    results = {
+        "status": "OK",
+        "operations_performed": []
+    }
+    
+    # Optimize MongoDB
+    try:
+        db_results = mongo_manager.optimize_database()
+        results["database_optimization"] = db_results
+        results["operations_performed"].extend(db_results.get("operations_performed", []))
+    except Exception as e:
+        logger.error(f"Error during database optimization: {e}")
+        results["database_optimization"] = {
+            "status": "error",
+            "error": str(e)
+        }
+    
+    # Optimize embedding service
+    try:
+        # Clear any old or unused embeddings from cache
+        if hasattr(embedding_service, 'embedding_cache'):
+            cache_size_before = len(embedding_service.embedding_cache)
+            # Keep only the 100 most recent items in cache
+            if cache_size_before > 100:
+                # Get the keys (text) from the cache
+                keys = list(embedding_service.embedding_cache.keys())
+                # Remove older items (first in the ordered dict)
+                for old_key in keys[:-100]:
+                    embedding_service.embedding_cache.pop(old_key, None)
+                
+                results["operations_performed"].append("cleaned_embedding_cache")
+                results["embedding_optimization"] = {
+                    "status": "ok",
+                    "cache_size_before": cache_size_before,
+                    "cache_size_after": len(embedding_service.embedding_cache)
+                }
+        
+        # Ensure the worker thread is running
+        if embedding_service.async_enabled and not embedding_service.running:
+            embedding_service.start_worker()
+            results["operations_performed"].append("restarted_embedding_worker")
+    except Exception as e:
+        logger.error(f"Error during embedding service optimization: {e}")
+        results["embedding_optimization"] = {
+            "status": "error",
+            "error": str(e)
+        }
+    
+    # Get memory stats for the response
+    try:
+        stats = memory_service.get_memory_stats()
+        results["memory_stats"] = stats
+    except Exception as e:
+        logger.error(f"Error getting memory stats: {e}")
+    
+    return results
+
+
 def register_command_handlers():
-    """Register all command handlers with the MCP server."""
-    # Register basic commands
+    """Register all MCP command handlers."""
+    # Core commands
     mcp_server.register_command("ping", handle_ping)
     mcp_server.register_command("get_memory_stats", handle_get_memory_stats)
+    mcp_server.register_command("health_check", handle_health_check)
+    mcp_server.register_command("optimize_memory", handle_optimize_memory)
     
-    # Register memory commands
+    # Memory commands
     mcp_server.register_command("store_memory", handle_store_memory)
     mcp_server.register_command("retrieve_memory", handle_retrieve_memory)
     mcp_server.register_command("search_by_tag", handle_search_by_tag)
     mcp_server.register_command("search_by_scope", handle_search_by_scope)
     mcp_server.register_command("delete_memory", handle_delete_memory)
     
-    # Additional commands will be registered here as we implement them 
+    # Other commands
+    # Additional commands will be registered here 

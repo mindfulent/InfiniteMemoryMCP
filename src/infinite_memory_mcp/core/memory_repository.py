@@ -6,8 +6,9 @@ providing CRUD operations for various memory types.
 """
 
 import uuid
+import threading
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from ..db.mongo_manager import mongo_manager
 from ..embedding.embedding_service import embedding_service
@@ -24,6 +25,13 @@ class MemoryRepository:
     Provides methods for storing, retrieving, and manipulating memory items
     in the MongoDB database.
     """
+    
+    def __init__(self):
+        """Initialize the memory repository."""
+        # Lock for thread-safe operations
+        self.lock = threading.RLock()
+        # Dictionary to track in-progress async operations
+        self.pending_operations = {}
     
     def store_conversation_memory(self, memory: ConversationMemory) -> str:
         """
@@ -48,9 +56,15 @@ class MemoryRepository:
         result = collection.insert_one(memory_dict)
         memory_id = str(result.inserted_id)
         
-        # Generate and store embedding if text is long enough
-        if len(memory.text) > 3:  # Skip very short texts
-            self._create_memory_embedding(memory.text, "conversation_history", memory_id, memory.scope)
+        # Create an embedding for this memory (asynchronously if enabled)
+        text = memory.text
+        scope = memory.scope
+        self._create_memory_embedding_async(
+            text=text,
+            source_collection="conversation_history",
+            source_id=memory_id,
+            scope=scope
+        )
         
         # Return the inserted ID
         return memory_id
@@ -83,9 +97,10 @@ class MemoryRepository:
         # Update the memory
         result = collection.update_one({"_id": memory_id}, {"$set": memory_dict})
         
-        # Update the embedding if text is long enough
-        if len(memory.text) > 3:
-            self._update_memory_embedding(memory.text, memory_id, memory.scope)
+        # Update the embedding for this memory
+        text = memory.text
+        scope = memory.scope
+        self._update_memory_embedding_async(text, memory_id, scope)
         
         # Return success status
         return result.modified_count > 0
@@ -151,6 +166,74 @@ class MemoryRepository:
             logger.error(f"Error creating memory embedding: {e}")
             return None
     
+    def _create_memory_embedding_async(self, text: str, source_collection: str, 
+                                   source_id: str, scope: str) -> None:
+        """
+        Create a memory embedding asynchronously.
+        
+        Args:
+            text: The text to generate embedding for
+            source_collection: The collection the source document is in
+            source_id: The ID of the source document
+            scope: The scope of the memory
+        """
+        try:
+            # Generate the embedding asynchronously
+            embedding_service.generate_embedding_async(
+                text,
+                self._handle_embedding_creation_callback,
+                source_collection,
+                source_id,
+                scope
+            )
+            
+            # Track this operation
+            with self.lock:
+                self.pending_operations[source_id] = "embedding_creation"
+            
+            logger.debug(f"Queued async embedding creation for memory {source_id}")
+        
+        except Exception as e:
+            logger.error(f"Error queuing async embedding creation: {e}")
+    
+    def _handle_embedding_creation_callback(self, embedding_vector: List[float],
+                                        source_collection: str, source_id: str, scope: str) -> None:
+        """
+        Callback for when an async embedding generation completes.
+        
+        Args:
+            embedding_vector: The generated embedding
+            source_collection: The collection the source document is in
+            source_id: The ID of the source document
+            scope: The scope of the memory
+        """
+        try:
+            # Create the memory index item
+            index_item = MemoryIndexItem(
+                embedding=embedding_vector,
+                source_collection=source_collection,
+                source_id=source_id,
+                scope=scope,
+                metadata={
+                    "text_preview": "",  # We don't have the text here
+                    "timestamp": datetime.now()
+                }
+            )
+            
+            # Store the index item
+            index_id = self.store_memory_index(index_item)
+            logger.info(f"Created async embedding for memory {source_id} in index as {index_id}")
+            
+            # Remove from pending operations
+            with self.lock:
+                self.pending_operations.pop(source_id, None)
+        
+        except Exception as e:
+            logger.error(f"Error in async embedding creation callback: {e}")
+            # Remove from pending operations
+            with self.lock:
+                self.pending_operations.pop(source_id, None)
+    
     def _update_memory_embedding(self, text: str, source_id: str, scope: str) -> bool:
         """
         Update the embedding for an existing memory item.
@@ -196,6 +279,94 @@ class MemoryRepository:
         except Exception as e:
             logger.error(f"Error updating memory embedding: {e}")
             return False
+    
+    def _update_memory_embedding_async(self, text: str, source_id: str, scope: str) -> None:
+        """
+        Update the embedding for an existing memory item asynchronously.
+        
+        Args:
+            text: The new text to generate embedding for
+            source_id: The ID of the source document
+            scope: The scope of the memory
+        """
+        try:
+            # Generate the embedding asynchronously
+            embedding_service.generate_embedding_async(
+                text,
+                self._handle_embedding_update_callback,
+                text,
+                source_id,
+                scope
+            )
+            
+            # Track this operation
+            with self.lock:
+                self.pending_operations[source_id] = "embedding_update"
+            
+            logger.debug(f"Queued async embedding update for memory {source_id}")
+        
+        except Exception as e:
+            logger.error(f"Error queuing async embedding update: {e}")
+    
+    def _handle_embedding_update_callback(self, embedding_vector: List[float],
+                                      text: str, source_id: str, scope: str) -> None:
+        """
+        Callback for when an async embedding update completes.
+        
+        Args:
+            embedding_vector: The generated embedding
+            text: The text that was embedded
+            source_id: The ID of the source document
+            scope: The scope of the memory
+        """
+        try:
+            collection = mongo_manager.get_collection("memory_index")
+            
+            # Update the existing index entry
+            result = collection.update_one(
+                {"source_id": source_id},
+                {
+                    "$set": {
+                        "embedding": embedding_vector,
+                        "scope": scope,
+                        "metadata.text_preview": text[:100] if len(text) > 100 else text,
+                        "metadata.updated_at": datetime.now()
+                    }
+                }
+            )
+            
+            if result.matched_count == 0:
+                # No existing index entry, create a new one
+                logger.info(f"No existing embedding found for {source_id}, creating new one")
+                # Determine source collection from context
+                source_collection = "conversation_history"  # Default
+                
+                # Create a new memory index item
+                index_item = MemoryIndexItem(
+                    embedding=embedding_vector,
+                    source_collection=source_collection,
+                    source_id=source_id,
+                    scope=scope,
+                    metadata={
+                        "text_preview": text[:100] if len(text) > 100 else text,
+                        "timestamp": datetime.now()
+                    }
+                )
+                
+                # Store the index item
+                self.store_memory_index(index_item)
+            else:
+                logger.info(f"Updated embedding for memory {source_id}")
+            
+            # Remove from pending operations
+            with self.lock:
+                self.pending_operations.pop(source_id, None)
+        
+        except Exception as e:
+            logger.error(f"Error in async embedding update callback: {e}")
+            # Remove from pending operations
+            with self.lock:
+                self.pending_operations.pop(source_id, None)
     
     def get_conversation_memory(self, memory_id: str) -> Optional[ConversationMemory]:
         """

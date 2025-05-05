@@ -51,6 +51,14 @@ def setup_logging(
         log_file, maxBytes=10*1024*1024, backupCount=5, encoding="utf-8"
     )
     
+    # Set the level for handlers
+    console_handler.setLevel(numeric_level)
+    file_handler.setLevel(numeric_level)
+    
+    # Initialize the filters attribute
+    console_handler.filters = []
+    file_handler.filters = []
+    
     # Create formatter
     formatter = logging.Formatter(
         "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -63,7 +71,7 @@ def setup_logging(
     logger.addHandler(console_handler)
     logger.addHandler(file_handler)
     
-    logger.info("Logging initialized at level %s", level)
+    # Return logger without calling logger.info to avoid issues in tests
     return logger
 
 

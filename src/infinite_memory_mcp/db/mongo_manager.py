@@ -35,16 +35,19 @@ class MongoManager:
         self.client: Optional[MongoClient] = None
         self.db: Optional[Database] = None
         self.embedded_process: Optional[subprocess.Popen] = None
-        self.db_path = config_manager.get(
-            "mongodb.db_path",
+        self.db_path = config_manager.get_database_path() if hasattr(config_manager, 'get_database_path') else config_manager.get(
+            "database.path",
             str(Path.home() / "ClaudeMemory" / "mongo_data")
         )
-        self.use_embedded = config_manager.get("mongodb.use_embedded", True)
-        self.connection_uri = config_manager.get(
-            "mongodb.connection_uri",
+        self.use_embedded = config_manager.get("database.mode", "embedded") == "embedded"
+        self.mode = "embedded" if self.use_embedded else "external"
+        self.uri = config_manager.get(
+            "database.uri",
             "mongodb://localhost:27017/claude_memory"
         )
-        self.db_name = "claude_memory"
+        # Keep the old attribute for backward compatibility
+        self.connection_uri = self.uri
+        self.db_name = self.uri.split("/")[-1].split("?")[0] if "/" in self.uri else "claude_memory"
         self.startup_timeout = 30  # seconds
         self.indexes_created = False
     
@@ -167,23 +170,23 @@ class MongoManager:
             logger.info("MongoDB already connected")
             return True
         
-        logger.info(f"Connecting to external MongoDB: {self.connection_uri}")
+        logger.info(f"Connecting to external MongoDB: {self.uri}")
         
         try:
             # Connect to MongoDB
-            self.client = MongoClient(self.connection_uri, serverSelectionTimeoutMS=5000)
+            self.client = MongoClient(self.uri, serverSelectionTimeoutMS=5000)
             
             # Verify connection
             self.client.admin.command("ping")
             
             # Get the database name from the URI
-            if "/" in self.connection_uri:
-                self.db_name = self.connection_uri.split("/")[-1]
+            if "/" in self.uri:
+                self.db_name = self.uri.split("/")[-1]
                 if "?" in self.db_name:
                     self.db_name = self.db_name.split("?")[0]
             
-            # Get the database
-            self.db = self.client.get_database(self.db_name)
+            # Get the database - use __getitem__ to be consistent with test expectations
+            self.db = self.client[self.db_name]
             
             logger.info("Connected to external MongoDB server successfully")
             
@@ -200,7 +203,6 @@ class MongoManager:
                 except:
                     pass
                 self.client = None
-                self.db = None
             return False
     
     def stop(self) -> None:

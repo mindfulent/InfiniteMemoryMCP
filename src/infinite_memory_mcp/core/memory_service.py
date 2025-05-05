@@ -198,41 +198,34 @@ class MemoryService:
         
         # Filter by tags if provided
         if tags:
-            memory_tuples = [(memory, score) for memory, score in memory_tuples 
-                            if all(tag in memory.tags for tag in tags)]
+            memory_tuples = [
+                (memory, score) for memory, score in memory_tuples
+                if all(tag in memory.tags for tag in tags)
+            ]
         
         # Filter by time range if provided
         if time_range:
-            from_time = None
-            to_time = None
-            
-            if "from" in time_range:
-                try:
-                    from_time = datetime.fromisoformat(time_range["from"])
-                except ValueError:
-                    logger.warning(f"Invalid from_time format: {time_range['from']}")
-            
-            if "to" in time_range:
-                try:
-                    to_time = datetime.fromisoformat(time_range["to"])
-                except ValueError:
-                    logger.warning(f"Invalid to_time format: {time_range['to']}")
-            
-            if from_time and to_time:
-                memory_tuples = [(memory, score) for memory, score in memory_tuples 
-                                if from_time <= memory.timestamp <= to_time]
+            try:
+                from_time = datetime.fromisoformat(time_range.get("from", "0001-01-01T00:00:00"))
+                to_time = datetime.fromisoformat(time_range.get("to", "9999-12-31T23:59:59"))
+                
+                memory_tuples = [
+                    (memory, score) for memory, score in memory_tuples
+                    if from_time <= memory.timestamp <= to_time
+                ]
+            except (ValueError, TypeError) as e:
+                logger.warning(f"Invalid time range format: {e}")
         
-        # Convert to result format
+        # Prepare the results
         results = []
         for memory, score in memory_tuples:
             results.append({
+                "memory_id": memory.id,
                 "text": memory.text,
-                "source": "conversation",
-                "timestamp": memory.timestamp.isoformat(),
                 "scope": memory.scope,
                 "tags": memory.tags,
-                "confidence": score,
-                "memory_id": memory.id
+                "timestamp": memory.timestamp.isoformat(),
+                "confidence": score
             })
         
         logger.info(f"Retrieved {len(results)} memories for query: {query}")

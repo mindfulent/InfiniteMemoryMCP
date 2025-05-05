@@ -133,7 +133,10 @@ class TestMemoryService(unittest.TestCase):
                 speaker="assistant"
             )
         ]
-        self.mock_repo.get_conversations_by_text_search.return_value = mock_memories
+        self.mock_repo.perform_hybrid_search.return_value = [
+            (mock_memories[0], 0.95),
+            (mock_memories[1], 0.85)
+        ]
         
         # Call the service
         result = self.service.retrieve_memory(
@@ -144,7 +147,12 @@ class TestMemoryService(unittest.TestCase):
         )
         
         # Verify the repository was called correctly
-        self.mock_repo.get_conversations_by_text_search.assert_called_once_with("test memory", "TestScope")
+        self.mock_repo.perform_hybrid_search.assert_called_once_with(
+            query_text="test memory", 
+            scope="TestScope", 
+            top_k=2, 
+            similarity_threshold=0.3
+        )
         
         # Verify the result
         self.assertEqual(result["status"], "OK")
@@ -180,7 +188,10 @@ class TestMemoryService(unittest.TestCase):
                 speaker="assistant"
             )
         ]
-        self.mock_repo.get_conversations_by_text_search.return_value = mock_memories
+        self.mock_repo.perform_hybrid_search.return_value = [
+            (mock_memories[0], 0.95),
+            (mock_memories[1], 0.85)
+        ]
         
         # Create time range filter that should only include today's memory
         time_range = {
@@ -196,7 +207,12 @@ class TestMemoryService(unittest.TestCase):
         )
         
         # Verify the repository was called correctly
-        self.mock_repo.get_conversations_by_text_search.assert_called_once_with("test memory", "TestScope")
+        self.mock_repo.perform_hybrid_search.assert_called_once_with(
+            query_text="test memory", 
+            scope="TestScope", 
+            top_k=5, 
+            similarity_threshold=0.3
+        )
         
         # Verify the result
         self.assertEqual(result["status"], "OK")

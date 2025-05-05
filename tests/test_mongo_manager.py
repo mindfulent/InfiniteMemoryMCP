@@ -13,11 +13,11 @@ import sys
 # Add the src directory to the Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from src.infinite_memory_mcp.db.mongo_manager import MongoDBManager
+from src.infinite_memory_mcp.db.mongo_manager import MongoManager
 
 
 class TestMongoDBManager(unittest.TestCase):
-    """Test the MongoDBManager class."""
+    """Test the MongoManager class."""
     
     def setUp(self):
         """Set up test environment."""
@@ -52,7 +52,7 @@ class TestMongoDBManager(unittest.TestCase):
     @patch('src.infinite_memory_mcp.db.mongo_manager.MongoClient')
     def test_init(self, mock_mongo_client):
         """Test initializing the MongoDB manager."""
-        manager = MongoDBManager()
+        manager = MongoManager()
         
         # Check the manager was initialized correctly
         self.assertEqual(manager.mode, "external")
@@ -76,7 +76,7 @@ class TestMongoDBManager(unittest.TestCase):
         mock_db.list_collection_names.return_value = []
         
         # Create and start the manager
-        manager = MongoDBManager()
+        manager = MongoManager()
         result = manager.start()
         
         # Check the connection was successful

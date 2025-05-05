@@ -7,9 +7,10 @@ providing CRUD operations for various memory types.
 
 import uuid
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from ..db.mongo_manager import mongo_manager
+from ..embedding.embedding_service import embedding_service
 from ..utils.logging import logger
 from .models import (ConversationMemory, MemoryBase, MemoryIndexItem,
                      MemoryScope, SummaryMemory, UserProfileItem,
@@ -45,9 +46,49 @@ class MemoryRepository:
         
         # Insert the memory
         result = collection.insert_one(memory_dict)
+        memory_id = str(result.inserted_id)
+        
+        # Generate and store embedding if text is long enough
+        if len(memory.text) > 3:  # Skip very short texts
+            self._create_memory_embedding(memory.text, "conversation_history", memory_id, memory.scope)
         
         # Return the inserted ID
-        return str(result.inserted_id)
+        return memory_id
+    
+    def update_conversation_memory(self, memory: ConversationMemory) -> bool:
+        """
+        Update an existing conversation memory.
+        
+        Args:
+            memory: The conversation memory to update
+            
+        Returns:
+            True if update was successful
+        """
+        if not memory.id:
+            logger.error("Cannot update memory: missing ID")
+            return False
+        
+        collection = mongo_manager.get_collection("conversation_history")
+        
+        # Convert to dict for MongoDB
+        memory_dict = dataclass_to_dict(memory)
+        if "_id" in memory_dict:
+            memory_id = memory_dict["_id"]
+            # Remove _id from the update
+            del memory_dict["_id"]
+        else:
+            memory_id = memory.id
+        
+        # Update the memory
+        result = collection.update_one({"_id": memory_id}, {"$set": memory_dict})
+        
+        # Update the embedding if text is long enough
+        if len(memory.text) > 3:
+            self._update_memory_embedding(memory.text, memory_id, memory.scope)
+        
+        # Return success status
+        return result.modified_count > 0
     
     def store_memory_index(self, index_item: MemoryIndexItem) -> str:
         """
@@ -69,6 +110,92 @@ class MemoryRepository:
         
         # Return the inserted ID
         return str(result.inserted_id)
+    
+    def _create_memory_embedding(self, text: str, source_collection: str, 
+                              source_id: str, scope: str) -> Optional[str]:
+        """
+        Create a memory embedding for the given text and add it to the index.
+        
+        Args:
+            text: The text to generate embedding for
+            source_collection: The collection the source document is in
+            source_id: The ID of the source document
+            scope: The scope of the memory
+            
+        Returns:
+            The ID of the memory index item, or None if creation failed
+        """
+        try:
+            # Generate the embedding
+            embedding_vector = embedding_service.generate_embedding(text)
+            
+            # Create the memory index item
+            index_item = MemoryIndexItem(
+                embedding=embedding_vector,
+                source_collection=source_collection,
+                source_id=source_id,
+                scope=scope,
+                metadata={
+                    "text_preview": text[:100] if len(text) > 100 else text,
+                    "timestamp": datetime.now()
+                }
+            )
+            
+            # Store the index item
+            index_id = self.store_memory_index(index_item)
+            logger.info(f"Created embedding for memory {source_id} in index as {index_id}")
+            
+            return index_id
+        
+        except Exception as e:
+            logger.error(f"Error creating memory embedding: {e}")
+            return None
+    
+    def _update_memory_embedding(self, text: str, source_id: str, scope: str) -> bool:
+        """
+        Update the embedding for an existing memory item.
+        
+        Args:
+            text: The new text to generate embedding for
+            source_id: The ID of the source document
+            scope: The scope of the memory
+            
+        Returns:
+            True if update was successful
+        """
+        try:
+            collection = mongo_manager.get_collection("memory_index")
+            
+            # Generate the new embedding
+            embedding_vector = embedding_service.generate_embedding(text)
+            
+            # Update the existing index entry
+            result = collection.update_one(
+                {"source_id": source_id},
+                {
+                    "$set": {
+                        "embedding": embedding_vector,
+                        "scope": scope,
+                        "metadata.text_preview": text[:100] if len(text) > 100 else text,
+                        "metadata.updated_at": datetime.now()
+                    }
+                }
+            )
+            
+            if result.matched_count == 0:
+                # No existing index entry, create a new one
+                logger.info(f"No existing embedding found for {source_id}, creating new one")
+                # Determine source collection from context
+                source_collection = "conversation_history"  # Default
+                self._create_memory_embedding(text, source_collection, source_id, scope)
+                return True
+            
+            logger.info(f"Updated embedding for memory {source_id}")
+            return result.modified_count > 0
+        
+        except Exception as e:
+            logger.error(f"Error updating memory embedding: {e}")
+            return False
     
     def get_conversation_memory(self, memory_id: str) -> Optional[ConversationMemory]:
         """
@@ -202,6 +329,139 @@ class MemoryRepository:
         return [dict_to_dataclass(memory_dict, ConversationMemory)
                 for memory_dict in memory_dicts]
     
+    def get_conversations_by_semantic_search(
+        self,
+        query_text: str,
+        scope: Optional[str] = None,
+        top_k: int = 5,
+        similarity_threshold: float = 0.3
+    ) -> List[Tuple[ConversationMemory, float]]:
+        """
+        Get conversation memories by semantic similarity to query.
+        
+        Args:
+            query_text: The text to search for semantically
+            scope: Optional scope to filter by
+            top_k: Number of top results to return
+            similarity_threshold: Minimum similarity score to include
+            
+        Returns:
+            A list of tuples (memory, similarity_score)
+        """
+        # Get query embedding
+        query_embedding = embedding_service.generate_embedding(query_text)
+        
+        # Get memory indices matching our filters
+        memory_index_collection = mongo_manager.get_collection("memory_index")
+        
+        # Build query
+        query = {
+            "source_collection": "conversation_history"
+        }
+        
+        # Add scope filter if provided
+        if scope:
+            query["scope"] = scope
+        
+        # Get all candidate memory indices
+        index_items = list(memory_index_collection.find(query))
+        
+        if not index_items:
+            logger.info(f"No memory index items found for scope {scope}")
+            return []
+        
+        # Extract embeddings and IDs
+        candidate_embeddings = [item["embedding"] for item in index_items]
+        source_ids = [item["source_id"] for item in index_items]
+        
+        # Find most similar embeddings
+        most_similar_indices = embedding_service.find_most_similar(
+            query_embedding,
+            candidate_embeddings,
+            top_k=top_k,
+            threshold=similarity_threshold
+        )
+        
+        # If no similar embeddings found, return empty list
+        if not most_similar_indices:
+            return []
+        
+        # Calculate similarity scores for the most similar items
+        similarity_scores = []
+        for idx in most_similar_indices:
+            score = embedding_service.compute_similarity(
+                query_embedding, 
+                candidate_embeddings[idx]
+            )
+            similarity_scores.append(score)
+        
+        # Get the actual memory items
+        conversation_collection = mongo_manager.get_collection("conversation_history")
+        result_items = []
+        
+        for i, idx in enumerate(most_similar_indices):
+            memory_id = source_ids[idx]
+            memory_dict = conversation_collection.find_one({"_id": memory_id})
+            
+            if memory_dict:
+                memory = dict_to_dataclass(memory_dict, ConversationMemory)
+                result_items.append((memory, similarity_scores[i]))
+        
+        # Sort by similarity score (descending)
+        result_items.sort(key=lambda x: x[1], reverse=True)
+        
+        return result_items
+    
+    def perform_hybrid_search(
+        self,
+        query_text: str,
+        scope: Optional[str] = None,
+        top_k: int = 5,
+        similarity_threshold: float = 0.3
+    ) -> List[Tuple[ConversationMemory, float]]:
+        """
+        Perform a hybrid search using both semantic and keyword matching.
+        
+        Args:
+            query_text: The text to search for
+            scope: Optional scope to filter by
+            top_k: Number of top results to return
+            similarity_threshold: Minimum similarity score to include
+            
+        Returns:
+            A list of tuples (memory, similarity_score)
+        """
+        # Get semantic search results
+        semantic_results = self.get_conversations_by_semantic_search(
+            query_text, scope, top_k, similarity_threshold
+        )
+        
+        # Get keyword search results
+        keyword_results = self.get_conversations_by_text_search(query_text, scope)
+        
+        # Convert keyword results to same format as semantic results
+        keyword_result_tuples = [(memory, 1.0) for memory in keyword_results]
+        
+        # Combine results, prioritizing exact matches
+        combined_results = keyword_result_tuples + [
+            result for result in semantic_results 
+            if result[0].id not in [k[0].id for k in keyword_result_tuples]
+        ]
+        
+        # Deduplicate and sort by similarity score
+        seen_ids = set()
+        unique_results = []
+        for memory, score in combined_results:
+            if memory.id not in seen_ids:
+                seen_ids.add(memory.id)
+                unique_results.append((memory, score))
+        
+        # Sort by score (highest first)
+        unique_results.sort(key=lambda x: x[1], reverse=True)
+        
+        # Return top_k
+        return unique_results[:top_k]
+    
     def delete_memory(self, memory_id: str) -> bool:
         """
         Delete a memory by ID.
@@ -217,7 +477,28 @@ class MemoryRepository:
         # Delete the memory
         result = collection.delete_one({"_id": memory_id})
         
+        # Delete the memory's embedding
+        self._delete_memory_embedding(memory_id)
+        
         # Check if a memory was deleted
+        return result.deleted_count > 0
+    
+    def _delete_memory_embedding(self, source_id: str) -> bool:
+        """
+        Delete the embedding for a memory.
+        
+        Args:
+            source_id: The ID of the source document
+            
+        Returns:
+            True if the embedding was deleted
+        """
+        collection = mongo_manager.get_collection("memory_index")
+        
+        # Delete the embedding
+        result = collection.delete_one({"source_id": source_id})
+        
+        # Return success status
         return result.deleted_count > 0
     
     def delete_memories_by_scope(self, scope: str) -> int:
@@ -232,8 +513,16 @@ class MemoryRepository:
         """
         collection = mongo_manager.get_collection("conversation_history")
         
+        # Get IDs of memories to delete (for embedding cleanup)
+        memory_dicts = list(collection.find({"scope": scope}, {"_id": 1}))
+        memory_ids = [mem["_id"] for mem in memory_dicts]
+        
         # Delete memories by scope
         result = collection.delete_many({"scope": scope})
+        
+        # Also delete embeddings
+        memory_index = mongo_manager.get_collection("memory_index")
+        memory_index.delete_many({"scope": scope})
         
         # Return the number of memories deleted
         return result.deleted_count
@@ -250,8 +539,17 @@ class MemoryRepository:
         """
         collection = mongo_manager.get_collection("conversation_history")
         
+        # Get IDs of memories to delete (for embedding cleanup)
+        memory_dicts = list(collection.find({"tags": tag}, {"_id": 1}))
+        memory_ids = [mem["_id"] for mem in memory_dicts]
+        
         # Delete memories by tag
         result = collection.delete_many({"tags": tag})
+        
+        # Also delete their embeddings
+        memory_index = mongo_manager.get_collection("memory_index")
+        for memory_id in memory_ids:
+            memory_index.delete_one({"source_id": memory_id})
         
         # Return the number of memories deleted
         return result.deleted_count
@@ -261,7 +559,7 @@ class MemoryRepository:
         Create a new memory scope.
         
         Args:
-            scope: The memory scope to create
+            scope: The scope to create
             
         Returns:
             The ID of the created scope
@@ -271,11 +569,10 @@ class MemoryRepository:
         # Convert to dict for MongoDB
         scope_dict = dataclass_to_dict(scope)
         
-        # Check if scope already exists
-        existing_scope = collection.find_one({"scope_name": scope.scope_name})
-        if existing_scope:
-            # Return existing scope ID
-            return str(existing_scope["_id"])
+        # Check if scope with this name already exists
+        existing = collection.find_one({"scope_name": scope.scope_name})
+        if existing:
+            return str(existing["_id"])
         
         # Insert the scope
         result = collection.insert_one(scope_dict)
@@ -322,43 +619,32 @@ class MemoryRepository:
     
     def get_memory_stats(self) -> Dict[str, Any]:
         """
-        Get statistics about the memory database.
+        Get memory statistics.
         
         Returns:
-            A dictionary containing memory statistics
+            Dictionary with memory statistics
         """
-        db = mongo_manager.db
-        
-        # Get total number of memories
-        total_memories = db.conversation_history.count_documents({})
-        
-        # Get number of conversations
-        conversation_ids = db.conversation_history.distinct("conversation_id")
-        conversation_count = len(conversation_ids)
-        
-        # Get counts by scope
-        scopes = {}
-        for scope in db.metadata_scopes.find({"type": "scope"}):
-            scope_name = scope["scope_name"]
-            scope_count = db.conversation_history.count_documents({"scope": scope_name})
-            scopes[scope_name] = scope_count
-        
-        # Get last backup time (placeholder for now)
-        last_backup = None
-        
-        # Get approximate database size
-        db_size_mb = 0
-        for collection_name in db.list_collection_names():
-            collection_stats = db.command("collStats", collection_name)
-            db_size_mb += collection_stats.get("size", 0) / (1024 * 1024)
-        
-        return {
-            "total_memories": total_memories,
-            "conversation_count": conversation_count,
-            "scopes": scopes,
-            "last_backup": last_backup,
-            "db_size_mb": round(db_size_mb, 2)
+        stats = {
+            "total_memories": 0,
+            "scopes": {},
+            "total_embeddings": 0
         }
+        
+        # Get conversation memories count
+        conversation_collection = mongo_manager.get_collection("conversation_history")
+        stats["total_memories"] = conversation_collection.count_documents({})
+        
+        # Get memory count by scope
+        scopes = self.get_all_scopes()
+        for scope in scopes:
+            count = conversation_collection.count_documents({"scope": scope.scope_name})
+            stats["scopes"][scope.scope_name] = count
+        
+        # Get embedding count
+        memory_index = mongo_manager.get_collection("memory_index")
+        stats["total_embeddings"] = memory_index.count_documents({})
+        
+        return stats
 
 
 # Create a singleton instance

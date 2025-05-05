@@ -27,17 +27,25 @@
 - [x] Filtering memories by scope and tags
 - [x] MCP commands for scope and tag operations
 
-## Session 4: Conversation History & Summaries (Pending)
+## Session 4: Integration & Optimization (Pending)
+
+- [ ] Complete MCP protocol integration
+- [ ] Performance optimizations 
+- [ ] Error handling and recovery mechanisms
+- [ ] Asynchronous processing implementation
+- [ ] End-to-end testing
+
+## Post-Launch: Conversation History & Summaries (Deferred)
 
 - [ ] Conversation history storage
 - [ ] Conversation summarization
 - [ ] MCP commands for conversation history
 
-## Session 5: Advanced Features & Optimizations (Pending)
+## Post-Launch: Memory Management & Maintenance (Deferred)
 
 - [ ] Backup and restore functionality
-- [ ] Performance optimizations
-- [ ] User preferences and settings
+- [ ] Time-based pruning implementation
+- [ ] Memory usage statistics and monitoring
 
 ## Known Issues and Limitations
 
@@ -47,7 +55,7 @@
 
 ## Next Steps
 
-1. Implement conversation history storage and summarization functionality (Session 4)
-2. Develop backup and restore capabilities
-3. Add performance optimizations
-4. Implement user preferences and settings management 
+1. Implement integration and optimization functionality (Session 4)
+2. Complete final testing and documentation (Session 5)
+3. Post-launch: Develop conversation history storage and summarization functionality
+4. Post-launch: Implement memory management features including backup, pruning, and monitoring 

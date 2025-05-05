@@ -16,9 +16,9 @@ The implementation will follow an incremental, session-based approach with each 
 - **Session 1**: Core Infrastructure [TODO]
 - **Session 2**: Memory Storage & Basic Retrieval [TODO]
 - **Session 3**: Semantic Search & Advanced Retrieval [TODO]
-- **Session 4**: Memory Management & Maintenance [PAUSE] [DO-NOT-DO]
-- **Session 5**: Integration & Optimization [TODO]
-- **Session 6**: Final Testing & Documentation [TODO]
+- **Session 4**: Integration & Optimization [TODO]
+- **Session 5**: Final Testing & Documentation [TODO]
+- **Post-Launch**: Memory Management & Maintenance [PAUSE] [DO-NOT-DO]
 
 ## Detailed Implementation Sessions
 
@@ -111,48 +111,28 @@ The implementation will follow an incremental, session-based approach with each 
 - [TODO] Vector indexing implementation
 - [TODO] Tests for semantic search accuracy and performance
 
-### Session 4: Memory Management & Maintenance
-**Objective**: Implement memory management features including pruning, summarization, and backup systems.
-
-**Deliverables**:
-1. [PAUSE] Time-based pruning implementation
-2. [PAUSE] Summarization framework
-3. [PAUSE] Backup and restore functionality
-4. [PAUSE] MCP commands for `delete_memory` and maintenance operations
-5. [PAUSE] Memory usage statistics and monitoring
-
-**Tasks**:
-- [PAUSE] Implement the pruning logic for time-based and relevance-based cleanup
-- [PAUSE] Create summarization framework (possibly using Claude for summaries)
-- [PAUSE] Develop backup/restore mechanisms using MongoDB tools
-- [PAUSE] Implement memory deletion and forgetting commands
-- [PAUSE] Create monitoring and statistics collection for memory usage
-
-**Testing Criteria**:
-- [PAUSE] Pruning correctly identifies and handles old memories
-- [PAUSE] Summarization produces concise representations of conversations
-- [PAUSE] Backups can be created and successfully restored
-- [PAUSE] Memory deletion works at item, scope, and tag levels
-- [PAUSE] Memory statistics accurately reflect system state
-
-**Commit Goals**:
-- [PAUSE] Working pruning and summarization system
-- [PAUSE] Backup and restore functionality
-- [PAUSE] Memory maintenance commands
-- [PAUSE] Deletion and forgetting implementation
-- [PAUSE] Tests for all maintenance functions
-
-### Session 5: Integration & Optimization
+### Session 4: Integration & Optimization
 **Objective**: Integrate all components, optimize performance, and enhance the system for production readiness.
 
 **Deliverables**:
 1. [TODO] Complete MCP protocol integration with all commands
 2. [TODO] Error handling and recovery mechanisms
+3. [TODO] Performance optimization for database queries and embedding operations
+4. [TODO] Asynchronous processing implementation for non-blocking operations
+5. [TODO] End-to-end system integration
 
 **Tasks**:
 - [TODO] Ensure all MCP commands work together seamlessly
 - [TODO] Optimize database queries and indexes for performance
 - [TODO] Implement asynchronous processing for embeddings and maintenance
+- [TODO] Develop robust error handling and recovery strategies
+- [TODO] Conduct performance testing and optimization
+
+**Testing Criteria**:
+- [TODO] All components integrate correctly with no conflicts
+- [TODO] System recovers gracefully from errors and edge cases
+- [TODO] Performance meets requirements for response time and throughput
+- [TODO] Asynchronous operations work correctly without blocking
 
 **Commit Goals**:
 - [TODO] Fully integrated system with all MCP commands
@@ -160,7 +140,7 @@ The implementation will follow an incremental, session-based approach with each 
 - [TODO] Asynchronous processing implementation
 - [TODO] End-to-end integration tests
 
-### Session 6: Final Testing & Documentation
+### Session 5: Final Testing & Documentation
 **Objective**: Complete comprehensive testing and documentation for the entire system.
 
 **Deliverables**:
@@ -190,6 +170,37 @@ The implementation will follow an incremental, session-based approach with each 
 - [TODO] API documentation
 - [TODO] Final code cleanup and optimization
 - [TODO] Production-ready system
+
+### Post-Launch: Memory Management & Maintenance [PAUSE] [DO-NOT-DO]
+**Objective**: Implement memory management features including pruning, summarization, and backup systems.
+
+**Deliverables**:
+1. [PAUSE] Time-based pruning implementation
+2. [PAUSE] Summarization framework
+3. [PAUSE] Backup and restore functionality
+4. [PAUSE] MCP commands for `delete_memory` and maintenance operations
+5. [PAUSE] Memory usage statistics and monitoring
+
+**Tasks**:
+- [PAUSE] Implement the pruning logic for time-based and relevance-based cleanup
+- [PAUSE] Create summarization framework (possibly using Claude for summaries)
+- [PAUSE] Develop backup/restore mechanisms using MongoDB tools
+- [PAUSE] Implement memory deletion and forgetting commands
+- [PAUSE] Create monitoring and statistics collection for memory usage
+
+**Testing Criteria**:
+- [PAUSE] Pruning correctly identifies and handles old memories
+- [PAUSE] Summarization produces concise representations of conversations
+- [PAUSE] Backups can be created and successfully restored
+- [PAUSE] Memory deletion works at item, scope, and tag levels
+- [PAUSE] Memory statistics accurately reflect system state
+
+**Commit Goals**:
+- [PAUSE] Working pruning and summarization system
+- [PAUSE] Backup and restore functionality
+- [PAUSE] Memory maintenance commands
+- [PAUSE] Deletion and forgetting implementation
+- [PAUSE] Tests for all maintenance functions
 
 ## Testing Strategy
 

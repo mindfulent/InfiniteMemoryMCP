@@ -13,6 +13,7 @@ InfiniteMemoryMCP is a MongoDB-powered persistent memory system for Claude Deskt
 - Async embedding generation for improved performance
 - Circuit breaker pattern for resilience
 - Hybrid search combining semantic and keyword search
+- **New:** Native MCP implementation that directly integrates with Claude without an adapter layer
 
 ## Installation
 
@@ -103,6 +104,67 @@ InfiniteMemoryMCP supports two MongoDB connection modes:
 ## Usage
 InfiniteMemoryMCP integrates with Claude Desktop using the Model Context Protocol (MCP). When running, it will listen for MCP commands on stdin and respond on stdout.
 
+### MCP Implementation
+
+InfiniteMemoryMCP directly interfaces with Claude Desktop without an adapter layer, providing:
+
+- Resource access for memory scopes
+- LLM sampling for memory summarization
+- Progress reporting for bulk operations
+- Better error handling with standardized MCP error codes
+
+To use the MCP implementation:
+
+1. Run the server:
+   ```
+   python -m src.infinite_memory_mcp.main --config config/mcp_config.json
+   ```
+
+2. Test the implementation:
+   ```
+   python scripts/test_mcp.py
+   ```
+
+### Native MCP Implementation
+
+InfiniteMemoryMCP now provides a native MCP implementation that directly interfaces with Claude Desktop without needing an adapter layer. This improves reliability, performance, and unlocks new capabilities like:
+
+- Resource access for memory scopes
+- LLM sampling for memory summarization
+- Progress reporting for bulk operations
+- Better error handling with standardized MCP error codes
+
+To use the native MCP implementation:
+
+1. Run the native MCP server:
+   ```
+   python -m src.infinite_memory_mcp.main_native --config config/native_mcp_config.json
+   ```
+
+   For remote access (experimental):
+   ```
+   python -m src.infinite_memory_mcp.main_native --config config/native_mcp_config.json --transport sse --host 0.0.0.0 --port 8000
+   ```
+
+2. Test the implementation:
+   ```
+   python scripts/test_native_mcp.py
+   ```
+
+#### Native MCP vs. Adapter
+
+| Feature | Native MCP | Adapter Layer |
+|---------|------------|--------------|
+| Protocol Support | Full MCP 2025-03-26 | Limited via adapter |
+| Resource Access | Yes | No |
+| LLM Sampling | Yes | No |
+| Progress Tracking | Yes | No |
+| Error Handling | Native MCP errors | Custom errors |
+| Performance | Direct | Overhead from adapter |
+| Remote Support | Yes (SSE) | No |
+
+**Note:** The adapter-based implementation has been deprecated in favor of the direct MCP integration.
+
 ### Configuring Claude Desktop
 
 To use InfiniteMemoryMCP with Claude Desktop, you need to configure the MCP server in Claude Desktop's configuration file. This file tells Claude Desktop which MCP servers to start when the application launches.
@@ -134,6 +196,51 @@ Add the following configuration to your `claude_desktop_config.json` file:
 }
 ```
 
+For the native MCP implementation, use one of these approaches:
+
+**Recommended approach using direct launcher (most reliable):**
+```json
+{
+  "mcpServers": {
+    "infinite-memory": {
+      "command": "/absolute/path/to/python3",
+      "args": ["/absolute/path/to/your/InfiniteMemoryMCP/scripts/direct_mcp_launcher.py"],
+      "cwd": "/absolute/path/to/your/InfiniteMemoryMCP",
+      "env": {
+        "PYTHONPATH": "/absolute/path/to/your/InfiniteMemoryMCP",
+        "LOG_LEVEL": "INFO",
+        "MONGODB_URI": "mongodb://localhost:27017/"
+      },
+      "stdio": true
+    }
+  },
+  "defaultMcpServer": "infinite-memory"
+}
+```
+
+**Module approach:**
+```json
+{
+  "mcpServers": {
+    "infinite-memory": {
+      "command": "python",
+      "args": [
+        "-m",
+        "src.infinite_memory_mcp.main_native",
+        "--config",
+        "config/native_mcp_config.json"
+      ],
+      "cwd": "/absolute/path/to/your/InfiniteMemoryMCP",
+      "env": {
+        "PYTHONPATH": "/absolute/path/to/your/InfiniteMemoryMCP",
+        "LOG_LEVEL": "INFO",
+        "MONGODB_URI": "mongodb://localhost:27017/"
+      }
+    }
+  }
+}
+```
+
 Make sure to replace `/absolute/path/to/your/InfiniteMemoryMCP` with the actual absolute path to where you cloned the InfiniteMemoryMCP repository.
 
 For Windows users, use the appropriate path format:
@@ -145,9 +252,16 @@ For Windows users, use the appropriate path format:
       "command": "python",
       "args": [
         "-m",
-        "src.infinite_memory_mcp.main"
+        "src.infinite_memory_mcp.main_native",
+        "--config",
+        "config/native_mcp_config.json"
       ],
-      "cwd": "C:\\absolute\\path\\to\\your\\InfiniteMemoryMCP"
+      "cwd": "C:\\absolute\\path\\to\\your\\InfiniteMemoryMCP",
+      "env": {
+        "PYTHONPATH": "C:\\absolute\\path\\to\\your\\InfiniteMemoryMCP",
+        "LOG_LEVEL": "INFO",
+        "MONGODB_URI": "mongodb://localhost:27017/"
+      }
     }
   }
 }
@@ -166,6 +280,7 @@ Here are the main commands supported by the system:
 - `search_by_scope`: Find memories in a specific scope
 - `delete_memory`: Remove memories from the system
 - `get_memory_stats`: Get stats about the memory system
+- `summarize_memories`: Summarize related memories using the LLM
 
 Example MCP command:
 ```json
@@ -195,6 +310,11 @@ InfiniteMemoryMCP includes a comprehensive test suite:
    python -m pytest -v
    ```
 
+4. Test the MCP implementation:
+   ```
+   python scripts/test_mcp.py
+   ```
+
 ## Troubleshooting
 
 ### Common Issues
@@ -209,6 +329,11 @@ InfiniteMemoryMCP includes a comprehensive test suite:
    - Verify path to your repository in the Claude Desktop configuration
    - Check your Python environment has all required dependencies
 
+3. **Native MCP Issues**:
+   - Ensure you have the latest `fastmcp` and `mcp` packages installed
+   - Check for errors in the native MCP server output
+   - Try using the MCP Inspector to debug: `npx @modelcontextprotocol/inspector python -m src.infinite_memory_mcp.main_native --config config/native_mcp_config.json`
+
 ## Project Status
 See the [Implementation Status](implementation_status.md) for current progress and future work.
 
@@ -216,6 +341,7 @@ See the [Implementation Status](implementation_status.md) for current progress a
 - [Project Plan](docs/project-plan.md): Implementation details and roadmap
 - [Product Requirements](docs/product-requirements.md): Functional requirements
 - [Technical Requirements](docs/technical-requirements.md): Technical specifications
+- [MCP Refactor](docs/mcp-refactor.md): Native MCP implementation details
 
 ## Development
 To contribute to InfiniteMemoryMCP:
@@ -226,4 +352,4 @@ To contribute to InfiniteMemoryMCP:
 4. Submit a pull request
 
 ## License
-[MIT License](LICENSE) 
+[MIT License](LICENSE)

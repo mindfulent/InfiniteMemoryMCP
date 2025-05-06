@@ -1,5 +1,5 @@
 #!/bin/bash
-# Run the InfiniteMemoryMCP MCP server
+# Deploy the InfiniteMemoryMCP MCP server with SSE transport for remote access
 
 # Check if MongoDB is running
 echo "Checking if MongoDB is running..."
@@ -25,6 +25,14 @@ export PYTHONPATH="$(pwd)"
 export LOG_LEVEL="INFO"
 export MONGODB_URI="mongodb://localhost:27017/"
 
-# Run the MCP server
-echo "Starting InfiniteMemoryMCP MCP server..."
-python3 -m src.infinite_memory_mcp.main --config config/mcp_config.json "$@" 
+# Default host and port
+HOST=${1:-"0.0.0.0"}
+PORT=${2:-"8000"}
+
+echo "Starting InfiniteMemoryMCP MCP server in remote mode..."
+echo "Server will be available at: http://$HOST:$PORT/sse"
+echo "Press Ctrl+C to stop the server"
+
+# Run the MCP server with SSE transport
+echo "Starting InfiniteMemoryMCP MCP server with SSE transport on ${HOST}:${PORT}..."
+python3 -m src.infinite_memory_mcp.main --config config/mcp_config.json --transport sse --host ${HOST} --port ${PORT} 

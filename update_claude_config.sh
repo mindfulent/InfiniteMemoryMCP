@@ -1,7 +1,0 @@
-CONFIG_FILE="/Users/jonpappas/Library/Application Support/Claude Desktop/claude_desktop_config.json"
-WRAPPER_PATH="/Users/jonpappas/Projects/InfiniteMemoryMCP/scripts/claude_integration/claude_mcp_wrapper.py"
-cp "$CONFIG_FILE" "${CONFIG_FILE}.backup"
-jq --arg path "$WRAPPER_PATH" '.mcpServers."infinite-memory".args[0] = $path' "$CONFIG_FILE" > "${CONFIG_FILE}.tmp"
-mv "${CONFIG_FILE}.tmp" "$CONFIG_FILE"
-echo "Updated Claude Desktop config to use wrapper at: $WRAPPER_PATH"
-echo "Backup saved at: ${CONFIG_FILE}.backup"

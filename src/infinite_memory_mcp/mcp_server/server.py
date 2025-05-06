@@ -492,8 +492,8 @@ class InfiniteMemoryMCP:
                 formatted_results.append({
                     "id": result["_id"],
                     "text": result["text"],
-                    "tags": result["tags"],
-                    "created_at": result["created_at"]
+                    "tags": result.get("tags", []),
+                    "created_at": result.get("created_at", datetime.now().isoformat())
                 })
                 
             return json.dumps(formatted_results)

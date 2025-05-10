@@ -261,50 +261,8 @@ Example MCP command:
 }
 ```
 
-## Testing
-InfiniteMemoryMCP includes a comprehensive test suite:
-
-1. Run all tests:
-   ```
-   python -m pytest
-   ```
-
-2. Run tests for a specific component:
-   ```
-   python -m pytest tests/test_memory_service.py
-   ```
-
-3. Run tests with verbosity:
-   ```
-   python -m pytest -v
-   ```
-
-4. Test the MCP implementation:
-   ```
-   python scripts/test_mcp.py
-   ```
-
-## Troubleshooting
-
-### Common Issues
-
-1. **MongoDB Connection Error**:
-   - Check if MongoDB is running: `brew services list` (macOS) or `systemctl status mongod` (Linux)
-   - Ensure your config.json has the correct mode ("external" is recommended)
-   - Verify MongoDB is installed and available in your PATH
-
-2. **MCP Server Error**:
-   - Check for error messages in the output
-   - Verify path to your repository in the Claude Desktop configuration
-   - Check your Python environment has all required dependencies
-
-3. **Native MCP Issues**:
-   - Ensure you have the latest `fastmcp` and `mcp` packages installed
-   - Check for errors in the native MCP server output
-   - Try using the MCP Inspector to debug: `npx @modelcontextprotocol/inspector python -m src.infinite_memory_mcp.main_native --config config/native_mcp_config.json`
-
 ## Project Status
-See the [Implementation Status](implementation_status.md) for current progress and future work.
+See the [Implementation Status](implementation-status.md) for current progress and future work.
 
 ## Documentation
 - [Project Plan](docs/project-plan.md): Implementation details and roadmap

@@ -134,37 +134,6 @@ InfiniteMemoryMCP now provides a native MCP implementation that directly interfa
 - Progress reporting for bulk operations
 - Better error handling with standardized MCP error codes
 
-To use the native MCP implementation:
-
-1. Run the native MCP server:
-   ```
-   python -m src.infinite_memory_mcp.main_native --config config/native_mcp_config.json
-   ```
-
-   For remote access (experimental):
-   ```
-   python -m src.infinite_memory_mcp.main_native --config config/native_mcp_config.json --transport sse --host 0.0.0.0 --port 8000
-   ```
-
-2. Test the implementation:
-   ```
-   python scripts/test_native_mcp.py
-   ```
-
-#### Native MCP vs. Adapter
-
-| Feature | Native MCP | Adapter Layer |
-|---------|------------|--------------|
-| Protocol Support | Full MCP 2025-03-26 | Limited via adapter |
-| Resource Access | Yes | No |
-| LLM Sampling | Yes | No |
-| Progress Tracking | Yes | No |
-| Error Handling | Native MCP errors | Custom errors |
-| Performance | Direct | Overhead from adapter |
-| Remote Support | Yes (SSE) | No |
-
-**Note:** The adapter-based implementation has been deprecated in favor of the direct MCP integration.
-
 ### Configuring Claude Desktop
 
 To use InfiniteMemoryMCP with Claude Desktop, you need to configure the MCP server in Claude Desktop's configuration file. This file tells Claude Desktop which MCP servers to start when the application launches.
